@@ -23,6 +23,7 @@
 - Why do some properties have a much higher value than others when they are located so close to each other?
 - Why are some properties valued so differently from others when they have nearly the same physical attributes but only differ in location?
 - Is having 1 bathroom worse for property value than having 2 bedrooms?
+- Does having a garage change the price?
 
 ### Modeling: 
 - Use drivers in explore to build predictive models of different types
