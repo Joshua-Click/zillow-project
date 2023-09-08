@@ -1,7 +1,20 @@
 # Imports
 #~~~~~~~~~~~~~~~
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+from scipy import stats
+from sklearn.model_selection import train_test_split
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import RobustScaler, PolynomialFeatures
+from env import get_db_url
+import os
 
-
+from sklearn.metrics import mean_squared_error
+from sklearn.metrics import r2_score
+from sklearn.linear_model import LinearRegression, LassoLars
+from sklearn.feature_selection import RFE
 
 #~~~~~~~~~~~~~~~
 # Acquire (52,442 PROPERTIES TOTAL AT START = TRUE)
@@ -61,8 +74,58 @@ def prep_zillow(df):
     df.bedrooms = df.bedrooms.astype(int)
     df.drop(df[df['bedrooms'] > 8].index, inplace=True)
     df.drop(df[df['bedrooms'] == 0].index, inplace=True)
+    # drops the homes with no bathrooms
+    df.drop(df[df['bathrooms'] < .5].index, inplace=True)
+    # drops the bottom 1% and the top 1% to deal with outliers
+    bottom_perc = df.home_value.quantile(.01)
+    top_perc = df.home_value.quantile(.99)
+    df = df[(df.home_value > bottom_perc) & (df.home_value < top_perc)]
+
     return df
 
+# Data Checker
+def check_columns(df):
+    """
+    This function takes a pandas dataframe as input and returns
+    a dataframe with information about each column in the dataframe. For
+    each column, it returns the column name, the number of
+    unique values in the column, the unique values themselves,
+    the number of null values in the column, and the data type of the column.
+    The resulting dataframe is sorted by the 'Number of Unique Values' column in ascending order.
+​
+    Args:
+    - df: pandas dataframe
+​
+    Returns:
+    - pandas dataframe
+    """
+    data = []
+    # Loop through each column in the dataframe
+    for column in df.columns:
+        # Append the column name, number of unique values, unique values, number of null values, and data type to the data list
+        data.append(
+            [
+                column,
+                df[column].nunique(),
+                df[column].unique(),
+                df[column].isna().sum(),
+                df[column].isna().mean(),
+                df[column].dtype
+            ]
+        )
+    # Create a pandas dataframe from the data list, with column names 'Column Name', 'Number of Unique Values', 'Unique Values', 'Number of Null Values', and 'dtype'
+    # Sort the resulting dataframe by the 'Number of Unique Values' column in ascending order
+    return pd.DataFrame(
+        data,
+        columns=[
+            "Column Name",
+            "Number of Unique Values",
+            "Unique Values",
+            "Number of Null Values",
+            "Proportion of Null Values",
+            "dtype"
+        ],
+    ).sort_values(by="Number of Unique Values")
 
 # Drop Outliers
 
@@ -99,19 +162,255 @@ def split_data(df):
 
 # Visuals
 
+def corr_heat(df, drops):
+    '''Creates a heatmap off of the dataset
+    
+    arguments: df, 'drop items'
+    
+    returns: heatmap visualization'''
+    sns.heatmap(df.drop(columns=drops).corr(), center=1)
+    plt.title('Correlation Heatmap')
+
+def catcont_four_graphs(df, var1, var2, hue):
+    """ Plots 4 graphs for visual representation of 1 continuous and 1 categorical variable
+    
+    arguments: df, var1, var2, hue, example input --> df, 'bedrooms', 'home_value', 'county'
+    
+    returns: 1 bar chart, 2 histograms, 1 boxplot"""
+    plt.figure(figsize=(20,10))
+    plt.suptitle(f'{var1} & {var2}')
+    plt.subplot(221)
+    sns.barplot(data=df, x=df[var1], y=df[var2], hue=hue)
+    plt.title(f'Number of {var1} to {var2}')
+    plt.xlabel(f'Number of {var1}')
+    plt.ylabel(f'{var2}')
+    
+    # print('~~~~~~~~~~~~~~~~~~~~~')
+    plt.subplot(222)
+    sns.histplot(df, x=df[var1], bins=20)
+    plt.title(f'Count of {var1}')
+    plt.xlabel(f'Number of {var1}')
+    
+    # print('~~~~~~~~~~~~~~~~~~~~~')
+    plt.subplot(223)
+    sns.histplot(df, x=df[var2], bins=20)
+    plt.title(f'Count of {var2}')
+    plt.xlabel(f'Number of {var2}')
+    
+    # print('~~~~~~~~~~~~~~~~~~~~~')
+    plt.subplot(224)
+    sns.boxplot(data=df, x=var1, y=var2, hue=hue)
+    plt.grid(False)
+    plt.xlabel(f'Number of {var1}')
+    plt.ylabel(f'{var2}')
+    plt.show()
+    # print('~~~~~~~~~~~~~~~~~~~~~')
+
+
+def contcont_four_graphs(df, var1, var2, hue):
+    """ Plots 4 graphs for visual representation of 2 continuous variables
+    
+    arguments: df, var1, var2, hue, example input --> df, 'bedrooms', 'home_value', 'county'
+    
+    returns: 1 scatterplot, 2 histograms, 1 boxplot"""
+    plt.figure(figsize=(20,10))
+    plt.suptitle(f'{var1} & {var2}')
+    plt.subplot(221)
+    sns.scatterplot(data=df, x=df[var1], y=df[var2], hue=hue)
+    plt.title(f'Number of {var1} to {var2}')
+    plt.xlabel(f'Number of {var1}')
+    plt.ylabel(f'{var2}')
+    
+    # print('~~~~~~~~~~~~~~~~~~~~~')
+    plt.subplot(222)
+    sns.histplot(df, x=df[var1], bins=20)
+    plt.title(f'Count of {var1}')
+    plt.xlabel(f'Number of {var1}')
+    
+    # print('~~~~~~~~~~~~~~~~~~~~~')
+    plt.subplot(223)
+    sns.histplot(df, x=df[var2], bins=20)
+    plt.title(f'Count of {var2}')
+    plt.xlabel(f'Number of {var2}')
+    
+    # print('~~~~~~~~~~~~~~~~~~~~~')
+    plt.subplot(224)
+    sns.boxplot(data=df, x=var1, hue=hue)
+    plt.grid(False)
+    plt.xlabel(f'Number of {var1}')
+    plt.ylabel(f'{var2}')
+    plt.show()
+    # print('~~~~~~~~~~~~~~~~~~~~~')
+
 # Stat Functions
 
 #~~~~~~~~~~~~~~~
 # Model
 #~~~~~~~~~~~~~~~
+def model_prep_zillow(train, validate, test, target):
+    # Make Dummies
+    dummy_list = ['county']
+    dummy_df = pd.get_dummies(train[dummy_list], dtype=int, drop_first=True)
+    train_prepd = pd.concat([train, dummy_df], axis=1)
 
+    dummy_list = ['county']
+    dummy_df = pd.get_dummies(validate[dummy_list], dtype=int, drop_first=True)
+    validate_prepd = pd.concat([validate, dummy_df], axis=1)
+
+    dummy_list = ['county']
+    dummy_df = pd.get_dummies(test[dummy_list], dtype=int, drop_first=True)
+    test_prepd = pd.concat([test, dummy_df], axis=1)
+
+    X_train = train_prepd[['bedrooms', 'bathrooms', 'finished_area']]
+    y_train = train_prepd[target]
+
+    X_validate = validate[['bedrooms', 'bathrooms', 'finished_area']]
+    y_validate = validate_prepd[target]
+
+    X_test = test[['bedrooms', 'bathrooms', 'finished_area']]
+    y_test = test_prepd[target]
+
+
+    return X_train, y_train, X_validate, y_validate, X_test, y_test
+    
+
+def model_prep_zillow_scaled(X_train, X_validate, X_test):
+    '''Takes the X train, validate, and test and fits them to a RobustScaler
+    
+    arguments: X_train, X_validate, X_test
+    
+    returns: X_train_scaled, X_validate_scaled, X_test_scaled'''
+    # makes a copy of the dataframes
+    X_train_scaled = X_train.copy()
+    X_valid_scaled = X_validate.copy()
+    X_test_scaled = X_test.copy()
+
+    columns_to_scale = ['bedrooms', 'bathrooms', 'finished_area']
+
+    scaler = RobustScaler()
+
+    X_train_scaled[columns_to_scale] = scaler.fit_transform(X_train[columns_to_scale])
+    X_valid_scaled[columns_to_scale] = scaler.transform(X_validate[columns_to_scale])
+    X_test_scaled[columns_to_scale] = scaler.transform(X_test[columns_to_scale])
+
+    return X_train_scaled, X_valid_scaled, X_test_scaled
+
+def metrics_reg(y, yhat):
+    """
+    send in y_true, y_pred & returns RMSE, R2
+    """
+    rmse = mean_squared_error(y, yhat, squared=False)
+    r2 = r2_score(y, yhat)
+    return rmse, r2
 # Baseline?
 
 # Model 1 ONLY USE BEDROOMS, BATHROOMS, AND HOME_VALUE
 
+def get_best_feat_rfe(df,df2, y, n):
+    '''COME BACK TO THIS'''
+
+    #intial ML model
+    lr1 = LinearRegression()
+
+    #make it
+    rfe = RFE(lr1, n_features_to_select=n)
+
+    #fit it
+    rfe.fit(df, y)
+
+    #use it on train
+    X_train_rfe = rfe.transform(df)
+
+    #use it on validate
+    X_val_rfe = rfe.transform(df2)
+    print('selected top feature:', rfe.get_feature_names_out())
+    return X_train_rfe, X_val_rfe
+
+def get_lr(df, df2, y, y2, n):
+    #intial ML model
+    lr1 = LinearRegression()
+
+    #make it
+    rfe = RFE(lr1, n_features_to_select=n)
+
+    #fit it
+    rfe.fit(df, y)
+
+    #use it on train
+    X_train_rfe = rfe.transform(df)
+
+    #use it on validate
+    X_val_rfe = rfe.transform(df2)
+
+    print('selected top feature:', rfe.get_feature_names_out())
+
+    lr1.fit(X_train_rfe, y)
+
+    #use the thing (make predictions)
+    pred_lr1 = lr1.predict(X_train_rfe)
+    pred_val_lr1 = lr1.predict(X_val_rfe)
+
+    #train
+    metrics_reg(y, pred_lr1)
+
+    #validate
+    rmse, r2 = metrics_reg(y2, pred_val_lr1)
+
+
+    return rmse, r2
+
+
 # Model 2
 
+def get_lasso(df, df2, y, y2):
+    #make it
+    lars = LassoLars(alpha=1)
+
+    #fit it
+    lars.fit(df, y)
+
+    #use it
+    pred_lars = lars.predict(df)
+    pred_val_lars = lars.predict(df2)
+
+    #train
+    metrics_reg(y, pred_lars)
+
+    #validate
+    rmse, r2 = metrics_reg(y2, pred_val_lars)
+    
+    return rmse, r2
+
+
+
 # Model 3
+
+def get_poly(df,df2,y,y2,n):
+    # make the polynomial features to get a new set of features
+    pf = PolynomialFeatures(degree=n)
+
+    # fit and transform X_train_scaled
+    X_train_degree2 = pf.fit_transform(df)
+
+    # transform X_validate_scaled & X_test_scaled
+    X_validate_degree2 = pf.transform(df2)
+    
+
+    #make it
+    pr = LinearRegression()
+
+    #fit it
+    pr.fit(X_train_degree2, y)
+
+    #use it
+    pred_pr = pr.predict(X_train_degree2)
+    pred_val_pr = pr.predict(X_validate_degree2)
+
+    #train
+    metrics_reg(y, pred_pr)
+    #validate
+    rmse, r2 = metrics_reg(y2, pred_val_pr)
+    return rmse, r2
 
 # Test Best
 
