@@ -4,13 +4,13 @@ import pandas as pd
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
-from scipy import stats
+
 from sklearn.model_selection import train_test_split
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import RobustScaler, PolynomialFeatures
 from env import get_db_url
 import os
-
+from scipy.stats import ttest_ind, spearmanr
 from sklearn.metrics import mean_squared_error
 from sklearn.metrics import r2_score
 from sklearn.linear_model import LinearRegression, LassoLars
@@ -158,7 +158,7 @@ def split_data(df):
 
     return train, validate, test
 
-# THEN IMPUTE
+
 
 # Visuals
 
@@ -242,7 +242,47 @@ def contcont_four_graphs(df, var1, var2, hue):
     plt.show()
     # print('~~~~~~~~~~~~~~~~~~~~~')
 
+
+#~~~~~~~~~~~~~~~
 # Stat Functions
+#~~~~~~~~~~~~~~~
+
+# create stats functions
+def spear_stat(var1, var2):
+    '''Takes 2 variables from a dataframe and determines if they are dependent on each other or not
+    
+    arguments: var1, var2
+    
+    returns: print statements'''
+    stat, p = spearmanr(var1, var2)
+    print('stat=%.3f, p=%.3f' % (stat, p))
+    if p > 0.05:
+        print('Probably independent')
+    else:
+        print('Probably dependent')
+
+
+def ttest_stat(var1,var2):
+    '''Takes 2 variables from a dataframe and determines if they have the same
+    distribution or not.
+    
+    arguments: var1, var2
+    
+    returns: print statements'''
+    # t-test
+    
+
+    stat, p = ttest_ind(var1, var2)
+    print('stat=%.3f, p=%.3f' % (stat, p))
+    if p > 0.05:
+        print('Probably the same distribution')
+    else:
+        print('Probably different distributions')
+
+
+
+
+
 
 #~~~~~~~~~~~~~~~
 # Model
