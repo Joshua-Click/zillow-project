@@ -83,7 +83,10 @@ def prep_zillow(df):
 
     return df
 
+
+#~~~~~~~~~~~~~~~
 # Data Checker
+#~~~~~~~~~~~~~~~
 def check_columns(df):
     """
     This function takes a pandas dataframe as input and returns
@@ -127,12 +130,12 @@ def check_columns(df):
         ],
     ).sort_values(by="Number of Unique Values")
 
-# Drop Outliers
 
-# How did I separate into counties (This AFTER SPLIT)
 
+
+#~~~~~~~~~~~~~~~
 # SPLIT
-
+#~~~~~~~~~~~~~~~
 def split_data(df):
     '''
     split continuouse data into train, validate, test; No target variable
@@ -159,9 +162,9 @@ def split_data(df):
     return train, validate, test
 
 
-
+#~~~~~~~~~~~~~~~
 # Visuals
-
+#~~~~~~~~~~~~~~~
 def corr_heat(df, drops):
     '''Creates a heatmap off of the dataset
     
@@ -242,6 +245,63 @@ def contcont_four_graphs(df, var1, var2, hue):
     plt.show()
     # print('~~~~~~~~~~~~~~~~~~~~~')
 
+def act_poly3_hist(y_train, pred_pr):
+    '''Returns a histogram for poly 3 model'''
+    plt.hist(y_train, color='blue', alpha=.5, label="Actual")
+    
+    plt.hist(pred_pr, color='pink', alpha=.5, label="Polynomial 3Deg")
+
+    plt.xlabel("Home Value")
+    plt.ylabel("Number of Houses")
+    plt.title("Comparing the Distribution of Actual to Predicted House Values")
+    plt.legend()
+    plt.show()
+
+def act_ploy2_hist(y_train, pred_pr):
+    ''' Returns a histogram for poly 2 model'''
+    plt.hist(y_train, color='blue', alpha=.5, label="Actual")
+    
+    plt.hist(pred_pr, color='green', alpha=.5, label="Polynomial 2Deg")
+    
+
+    plt.xlabel("Home Value")
+    plt.ylabel("Number of Houses")
+    plt.title("Comparing the Distribution of Actual to Predicted House Values")
+    plt.legend()
+    plt.show()
+
+def act_lr_lar_hist(y_train, pred_lr1, pred_lars):
+    '''Creates a histogram for line reg and lasso lars
+    
+    returns: histogram'''
+    plt.hist(y_train, color='blue', alpha=.5, label="Actual")
+    plt.hist(pred_lr1, color='red', alpha=.5, label="LinearRegression")
+    plt.hist(pred_lars, color='gray', alpha=.5, label="LassoLars")
+
+    plt.xlabel("Home Value")
+    plt.ylabel("Number of Houses")
+    plt.title("Comparing the Distribution of Actual to Predicted House Values")
+    plt.legend()
+    plt.show()
+
+def act_poly3_hist_test(y_test, pred_test_pr):
+    '''Takes 2 vars and creates a histogram to visualize test and actual data
+    
+    returns: histogram'''
+    plt.hist(y_test, color='blue', alpha=.5, label="Actual")
+    plt.hist(pred_test_pr, color='green', alpha=.5, label="Polynomial 3Deg")
+
+    plt.xlabel("Home Value")
+    plt.ylabel("Number of Houses")
+    plt.title("Comparing the Distribution of Actual to Predicted Test House Values")
+    plt.legend()
+    plt.show()
+
+
+
+
+
+
 
 #~~~~~~~~~~~~~~~
 # Stat Functions
@@ -285,7 +345,7 @@ def ttest_stat(var1,var2):
 
 
 #~~~~~~~~~~~~~~~
-# Model
+# Model 1
 #~~~~~~~~~~~~~~~
 def model_prep_zillow(train, validate, test, target):
     # Make Dummies
@@ -342,12 +402,10 @@ def metrics_reg(y, yhat):
     rmse = mean_squared_error(y, yhat, squared=False)
     r2 = r2_score(y, yhat)
     return rmse, r2
-# Baseline?
 
-# Model 1 ONLY USE BEDROOMS, BATHROOMS, AND HOME_VALUE
 
 def get_best_feat_rfe(df,df2, y, n):
-    '''COME BACK TO THIS'''
+    '''Takes in  train and validate, the y_train, and number of features you want to see for best selection'''
 
     #intial ML model
     lr1 = LinearRegression()
@@ -367,6 +425,7 @@ def get_best_feat_rfe(df,df2, y, n):
     return X_train_rfe, X_val_rfe
 
 def get_lr(df, df2, y, y2, n):
+    '''linear regression model 1 takes train and validate, y_train, y-validate and 3 features'''
     #intial ML model
     lr1 = LinearRegression()
 
@@ -397,12 +456,13 @@ def get_lr(df, df2, y, y2, n):
     rmse, r2 = metrics_reg(y2, pred_val_lr1)
 
 
-    return rmse, r2
+    return rmse, r2, pred_lr1
 
-
+#~~~~~~~~~~~~~~~
 # Model 2
-
+#~~~~~~~~~~~~~~~
 def get_lasso(df, df2, y, y2):
+    '''lassolars model'''
     #make it
     lars = LassoLars(alpha=1)
 
@@ -419,13 +479,14 @@ def get_lasso(df, df2, y, y2):
     #validate
     rmse, r2 = metrics_reg(y2, pred_val_lars)
     
-    return rmse, r2
+    return rmse, r2, pred_lars
 
 
-
+#~~~~~~~~~~~~~~~
 # Model 3
-
+#~~~~~~~~~~~~~~~
 def get_poly(df,df2,y,y2,n):
+    '''polynomial regression model'''
     # make the polynomial features to get a new set of features
     pf = PolynomialFeatures(degree=n)
 
@@ -450,10 +511,43 @@ def get_poly(df,df2,y,y2,n):
     metrics_reg(y, pred_pr)
     #validate
     rmse, r2 = metrics_reg(y2, pred_val_pr)
-    return rmse, r2
+    return rmse, r2, pred_pr
 
+
+
+#~~~~~~~~~~~~~~~
 # Test Best
+#~~~~~~~~~~~~~~~
+def get_poly_test(df, df2, df3, y, y2, y3,n):
+    '''takes train, validate, and test sets, and the number of degrees for polynomial regression model'''
+    # make the polynomial features to get a new set of features
+    pf = PolynomialFeatures(degree=n)
 
+    # fit and transform X_train_scaled
+    X_train_degree2 = pf.fit_transform(df)
+
+    # transform X_validate_scaled & X_test_scaled
+    X_validate_degree2 = pf.transform(df2)
+    X_test_degree = pf.transform(df3)
+
+    #make it
+    pr = LinearRegression()
+
+    #fit it
+    pr.fit(X_train_degree2, y)
+
+    #use it
+    pred_pr = pr.predict(X_train_degree2)
+    pred_val_pr = pr.predict(X_validate_degree2)
+    pred_test_pr = pr.predict(X_test_degree)
+    
+    #train
+    metrics_reg(y, pred_pr)
+    #validate
+    metrics_reg(y2, pred_val_pr)
+    #test
+    rmse, r2 = metrics_reg(y3, pred_test_pr)
+    return rmse, r2, pred_test_pr
 
 
 
